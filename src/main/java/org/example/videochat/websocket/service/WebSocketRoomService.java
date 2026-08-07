@@ -9,7 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
 
 @Service
-public class RoomService {
+public class WebSocketRoomService {
 
     private final Map<String, Set<String>> roomParticipants = new ConcurrentHashMap<>();
 

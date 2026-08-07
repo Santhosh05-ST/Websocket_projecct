@@ -3,7 +3,7 @@ package org.example.videochat.websocket.controller;
 import org.example.videochat.websocket.model.ChatMessage;
 import org.example.videochat.websocket.model.RoomMessage;
 import org.example.videochat.websocket.model.SignalMessage;
-import org.example.videochat.websocket.service.RoomService;
+import org.example.videochat.websocket.service.WebSocketRoomService;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
@@ -17,11 +17,11 @@ import java.util.List;
 public class ChatController {
 
     private final SimpMessagingTemplate messagingTemplate;
-    private final RoomService roomService;
+    private final WebSocketRoomService webSocketRoomService;
 
-    public ChatController(SimpMessagingTemplate messagingTemplate, RoomService roomService) {
+    public ChatController(SimpMessagingTemplate messagingTemplate, WebSocketRoomService webSocketRoomService) {
         this.messagingTemplate = messagingTemplate;
-        this.roomService = roomService;
+        this.webSocketRoomService = webSocketRoomService;
     }
 
     @MessageMapping("/chat.send/{roomId}")
@@ -40,7 +40,7 @@ public class ChatController {
         headerAccessor.getSessionAttributes().put("username", username);
         headerAccessor.getSessionAttributes().put("roomId", roomId);
 
-        List<String> participants = List.copyOf(roomService.joinRoom(roomId, username));
+        List<String> participants = List.copyOf(webSocketRoomService.joinRoom(roomId, username));
 
         joinMessage.setRoomId(roomId);
         joinMessage.setType(ChatMessage.MessageType.JOIN);
@@ -53,7 +53,7 @@ public class ChatController {
     @MessageMapping("/room.leave/{roomId}")
     public void leaveRoom(@DestinationVariable String roomId, @Payload ChatMessage leaveMessage) {
         String username = leaveMessage.getSender();
-        List<String> participants = List.copyOf(roomService.leaveRoom(roomId, username));
+        List<String> participants = List.copyOf(webSocketRoomService.leaveRoom(roomId, username));
 
         leaveMessage.setRoomId(roomId);
         leaveMessage.setType(ChatMessage.MessageType.LEAVE);

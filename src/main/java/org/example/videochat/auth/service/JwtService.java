@@ -1,5 +1,6 @@
 package org.example.videochat.auth.service;
 
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
@@ -39,5 +40,20 @@ public class JwtService {
                 .expiration(expiryDate)
                 .signWith(key)
                 .compact();
+    }
+
+    /**
+     * Validates the token and returns the email (subject) it was issued for.
+     * Throws an unchecked exception (from jjwt) if the token is invalid or expired.
+     */
+    public String extractEmail(String token) {
+
+        Claims claims = Jwts.parser()
+                .verifyWith(key)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+
+        return claims.getSubject();
     }
 }

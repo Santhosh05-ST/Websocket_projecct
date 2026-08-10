@@ -19,7 +19,7 @@ function fmtTime(iso) {
 
 export default function App() {
   // ---------- top-level state ----------
-  const [serverUrl, setServerUrl] = useState("http://localhost:8080");
+  const [serverUrl, setServerUrl] = useState("https://websocket-projecct-1.onrender.com");
   const [screen, setScreen] = useState("auth");
   const [authTab, setAuthTab] = useState("login");
 

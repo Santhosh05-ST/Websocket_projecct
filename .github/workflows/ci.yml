@@ -3,13 +3,13 @@ name: Backend CI
 on:
 push:
 branches:
-\- main
-\- develop
+- main
+- develop
 
 pull\_request:
 branches:
-\- main
-\- develop
+- main
+- develop
 
 jobs:
 build-and-test:

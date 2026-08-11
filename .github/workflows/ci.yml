@@ -14,7 +14,7 @@ branches:
 jobs:
 build-and-test:
 
-```
+
 runs-on: ubuntu-latest
 
 services:
@@ -52,4 +52,3 @@ steps:
       SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/videochat
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: root
-```

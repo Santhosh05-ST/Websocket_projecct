@@ -1,5 +1,7 @@
 package org.example.videochat.auth.security;
 
+
+import org.springframework.security.crypto.password.PasswordEncoder;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -12,6 +14,7 @@ import org.springframework.security.web.authentication.SimpleUrlAuthenticationSu
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.util.UUID;
 
 @Component
 public class OAuth2AuthenticationSuccessHandler
@@ -19,13 +22,16 @@ public class OAuth2AuthenticationSuccessHandler
 
     private final JwtService jwtService;
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
     public OAuth2AuthenticationSuccessHandler(
             JwtService jwtService,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            PasswordEncoder passwordEncoder) {
 
         this.jwtService = jwtService;
         this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Override
@@ -52,7 +58,7 @@ public class OAuth2AuthenticationSuccessHandler
 
                             newUser.setEmail(email);
                             newUser.setUsername(name);
-
+                            newUser.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
                             return userRepository.save(newUser);
                         });
 

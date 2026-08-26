@@ -44,7 +44,7 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
         String token = jwtService.generateToken(user.getEmail());
 
         // Redirect to React app with token attached as query param
-        String redirectUrl = "http://localhost:3000/oauth2/redirect?token=" + token;
+        String redirectUrl = "https://websocket-projecct-2.onrender.com?token==" + token;
         getRedirectStrategy().sendRedirect(request, response, redirectUrl);
     }
 }

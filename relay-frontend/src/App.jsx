@@ -559,10 +559,9 @@ function TopBar({ serverUrl, setServerUrl, connStatus }) {
 }
 
 function AuthScreen({ serverUrl, authTab, setAuthTab, loginForm, setLoginForm, regForm, setRegForm, loginMsg, regMsg, loginBusy, regBusy, onLogin, onRegister }) {
-  const handleGoogleLogin = () => {
-    const redirectUri = window.location.origin + "/oauth2/redirect";
-    window.location.href = serverUrl.replace(/\/$/, "") + "/oauth2/authorization/google?redirect_uri=" + encodeURIComponent(redirectUri);
-  };
+const handleGoogleLogin = () => {
+  window.location.href = `${serverUrl.replace(/\/$/, "")}/oauth2/authorization/google`;
+};
 
   return (
     <div className="flex-1 flex items-center justify-center px-5 py-10">

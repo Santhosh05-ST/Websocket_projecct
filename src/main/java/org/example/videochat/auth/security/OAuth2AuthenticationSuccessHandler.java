@@ -1,7 +1,7 @@
 package org.example.videochat.auth.security;
 
 
-import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -22,16 +22,15 @@ public class OAuth2AuthenticationSuccessHandler
 
     private final JwtService jwtService;
     private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
+
 
     public OAuth2AuthenticationSuccessHandler(
             JwtService jwtService,
-            UserRepository userRepository,
-            PasswordEncoder passwordEncoder) {
+            UserRepository userRepository) {
 
         this.jwtService = jwtService;
         this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
+
     }
 
     @Override
@@ -58,7 +57,11 @@ public class OAuth2AuthenticationSuccessHandler
 
                             newUser.setEmail(email);
                             newUser.setUsername(name);
-                            newUser.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
+                            String randomPassword = UUID.randomUUID().toString();
+
+                            newUser.setPassword(
+                                    new BCryptPasswordEncoder().encode(randomPassword)
+                            );
                             return userRepository.save(newUser);
                         });
 

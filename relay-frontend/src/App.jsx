@@ -1,13 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import SockJS from "sockjs-client";
 import Stomp from "stompjs";
-import { Mic, MicOff, Video, VideoOff, Copy, Send, Users, MessageSquare, Circle, PhoneOff } from "lucide-react";
+import { Mic, MicOff, Video, VideoOff, Copy, Send, Users, MessageSquare, Circle, PhoneOff, ShieldCheck, KeyRound } from "lucide-react";
 
 const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
-
-function initials(name) {
-  return (name || "?").trim().slice(0, 2).toUpperCase();
-}
 
 function fmtTime(iso) {
   try {
@@ -20,19 +16,25 @@ function fmtTime(iso) {
 export default function App() {
   // ---------- top-level state ----------
   const [serverUrl, setServerUrl] = useState("https://websocket-projecct-1.onrender.com");
-  const [screen, setScreen] = useState("auth"); // auth | dashboard | room | oauth_processing
+  const [screen, setScreen] = useState("auth"); // auth | 2fa_verify | dashboard | room | oauth_processing
   const [authTab, setAuthTab] = useState("login");
 
   const [token, setToken] = useState(null);
+  const [tempToken, setTempToken] = useState(null); // Temporary token for 2FA challenge
   const [user, setUser] = useState(null);
   const [room, setRoom] = useState(null);
 
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [regForm, setRegForm] = useState({ username: "", email: "", password: "" });
+  const [twoFactorCode, setTwoFactorCode] = useState("");
+  
   const [loginMsg, setLoginMsg] = useState({ text: "", ok: false });
   const [regMsg, setRegMsg] = useState({ text: "", ok: false });
+  const [twoFactorMsg, setTwoFactorMsg] = useState({ text: "", ok: false });
+  
   const [loginBusy, setLoginBusy] = useState(false);
   const [regBusy, setRegBusy] = useState(false);
+  const [twoFactorBusy, setTwoFactorBusy] = useState(false);
 
   const [joinCode, setJoinCode] = useState("");
   const [dashMsg, setDashMsg] = useState("");
@@ -46,6 +48,9 @@ export default function App() {
   const [camOn, setCamOn] = useState(true);
   const [remoteUsers, setRemoteUsers] = useState([]);
   const [toasts, setToasts] = useState([]);
+
+  // 2FA Setup state
+  const [twoFactorSetupData, setTwoFactorSetupData] = useState(null);
 
   // ---------- refs ----------
   const tokenRef = useRef(null);
@@ -75,9 +80,10 @@ export default function App() {
 
   // ---------- API helper ----------
   const api = useCallback(
-    async (path, { method = "GET", body, auth = true } = {}) => {
+    async (path, { method = "GET", body, auth = true, overrideToken } = {}) => {
       const headers = { "Content-Type": "application/json" };
-      if (auth && tokenRef.current) headers.Authorization = "Bearer " + tokenRef.current;
+      const authToken = overrideToken || tokenRef.current;
+      if (auth && authToken) headers.Authorization = "Bearer " + authToken;
       let res;
       try {
         res = await fetch(serverUrl.replace(/\/$/, "") + path, {
@@ -103,26 +109,30 @@ export default function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const oauthToken = params.get("token");
+    const requires2FA = params.get("requires2FA") === "true";
 
     if (oauthToken) {
-      // Clean up query string from browser URL bar
       window.history.replaceState({}, document.title, window.location.pathname);
-      setScreen("oauth_processing");
+      
+      if (requires2FA) {
+        setTempToken(oauthToken);
+        setScreen("2fa_verify");
+      } else {
+        setScreen("oauth_processing");
+        tokenRef.current = oauthToken;
+        setToken(oauthToken);
 
-      tokenRef.current = oauthToken;
-      setToken(oauthToken);
-
-      // Fetch user profile using extracted OAuth JWT
-      api("/users/me")
-        .then((me) => {
-          setUser(me);
-          setScreen("dashboard");
-          pushToast("Welcome, " + me.username + ".");
-        })
-        .catch((err) => {
-          setScreen("auth");
-          setLoginMsg({ text: "OAuth Login Failed: " + err.message, ok: false });
-        });
+        api("/users/me")
+          .then((me) => {
+            setUser(me);
+            setScreen("dashboard");
+            pushToast("Welcome, " + me.username + ".");
+          })
+          .catch((err) => {
+            setScreen("auth");
+            setLoginMsg({ text: "OAuth Login Failed: " + err.message, ok: false });
+          });
+      }
     }
   }, [api]);
 
@@ -149,12 +159,19 @@ export default function App() {
     setLoginBusy(true);
     try {
       const resp = await api("/auth/login", { method: "POST", auth: false, body: loginForm });
-      tokenRef.current = resp.token;
-      setToken(resp.token);
-      const me = await api("/users/me");
-      setUser(me);
-      setScreen("dashboard");
-      pushToast("Welcome back, " + me.username + ".");
+      
+      // If server requires 2FA authentication
+      if (resp.requires2FA) {
+        setTempToken(resp.token || resp.tempToken);
+        setScreen("2fa_verify");
+      } else {
+        tokenRef.current = resp.token;
+        setToken(resp.token);
+        const me = await api("/users/me");
+        setUser(me);
+        setScreen("dashboard");
+        pushToast("Welcome back, " + me.username + ".");
+      }
     } catch (err) {
       setLoginMsg({ text: err.message, ok: false });
     } finally {
@@ -162,9 +179,49 @@ export default function App() {
     }
   }
 
+  async function handleVerify2FA(e) {
+    e.preventDefault();
+    setTwoFactorMsg({ text: "", ok: false });
+    setTwoFactorBusy(true);
+
+    try {
+      const resp = await api("/api/2fa/verify", {
+        method: "POST",
+        overrideToken: tempToken,
+        body: { code: parseInt(twoFactorCode, 10) },
+      });
+
+      const finalToken = resp.token || tempToken;
+      tokenRef.current = finalToken;
+      setToken(finalToken);
+      setTempToken(null);
+      setTwoFactorCode("");
+
+      const me = await api("/users/me");
+      setUser(me);
+      setScreen("dashboard");
+      pushToast("Welcome back, " + me.username + ".");
+    } catch (err) {
+      setTwoFactorMsg({ text: err.message || "Invalid 2FA Code", ok: false });
+    } finally {
+      setTwoFactorBusy(false);
+    }
+  }
+
+  // 2FA Management in Dashboard
+  async function handleSetup2FA() {
+    try {
+      const data = await api("/api/2fa/setup", { method: "POST" });
+      setTwoFactorSetupData(data);
+    } catch (err) {
+      pushToast("Failed to initiate 2FA setup: " + err.message, true);
+    }
+  }
+
   function handleLogout() {
     leaveRoomCleanup();
     setToken(null);
+    setTempToken(null);
     setUser(null);
     setScreen("auth");
   }
@@ -476,6 +533,17 @@ export default function App() {
         />
       )}
 
+      {screen === "2fa_verify" && (
+        <TwoFactorVerifyScreen
+          code={twoFactorCode}
+          setCode={setTwoFactorCode}
+          onVerify={handleVerify2FA}
+          busy={twoFactorBusy}
+          msg={twoFactorMsg}
+          onBack={() => setScreen("auth")}
+        />
+      )}
+
       {screen === "dashboard" && user && (
         <DashboardScreen
           user={user}
@@ -485,6 +553,8 @@ export default function App() {
           setJoinCode={setJoinCode}
           onJoinRoom={handleJoinRoom}
           dashMsg={dashMsg}
+          onSetup2FA={handleSetup2FA}
+          setupData={twoFactorSetupData}
         />
       )}
 
@@ -559,9 +629,9 @@ function TopBar({ serverUrl, setServerUrl, connStatus }) {
 }
 
 function AuthScreen({ serverUrl, authTab, setAuthTab, loginForm, setLoginForm, regForm, setRegForm, loginMsg, regMsg, loginBusy, regBusy, onLogin, onRegister }) {
-const handleGoogleLogin = () => {
-  window.location.href = `${serverUrl.replace(/\/$/, "")}/oauth2/authorization/google`;
-};
+  const handleGoogleLogin = () => {
+    window.location.href = `${serverUrl.replace(/\/$/, "")}/oauth2/authorization/google`;
+  };
 
   return (
     <div className="flex-1 flex items-center justify-center px-5 py-10">
@@ -683,6 +753,45 @@ const handleGoogleLogin = () => {
   );
 }
 
+function TwoFactorVerifyScreen({ code, setCode, onVerify, busy, msg, onBack }) {
+  return (
+    <div className="flex-1 flex items-center justify-center px-5 py-10">
+      <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center">
+        <div className="w-12 h-12 bg-indigo-500/10 text-indigo-400 rounded-full flex items-center justify-center mx-auto mb-4 border border-indigo-500/20">
+          <KeyRound size={24} />
+        </div>
+        <h2 className="text-xl font-semibold mb-1">Two-Factor Authentication</h2>
+        <p className="text-xs text-slate-400 mb-6">Enter the 6-digit code from your authenticator app.</p>
+
+        <form onSubmit={onVerify}>
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength={6}
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+            placeholder="123456"
+            className="w-full text-center text-2xl font-mono tracking-widest bg-slate-950 border border-slate-800 text-slate-100 rounded-lg px-3 py-3 mb-4 focus:outline-none focus:border-indigo-500"
+            autoFocus
+          />
+          <button type="submit" disabled={busy || code.length !== 6} className={primaryBtn}>
+            {busy ? "Verifying…" : "Verify code"}
+          </button>
+          {msg.text && (
+            <p className={"text-center text-xs mt-3 " + (msg.ok ? "text-cyan-400" : "text-rose-400")}>
+              {msg.text}
+            </p>
+          )}
+        </form>
+
+        <button onClick={onBack} className="mt-4 text-xs text-slate-400 hover:text-slate-200">
+          ← Back to login
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Field({ label, children }) {
   return (
     <div className="mb-3.5">
@@ -698,7 +807,7 @@ const primaryBtn =
   "w-full rounded-lg py-2.5 font-semibold text-sm text-white bg-gradient-to-br from-indigo-500 to-violet-500 disabled:opacity-50 active:scale-[0.98] transition";
 const ghostBtn = "rounded-lg py-2 px-4 font-semibold text-sm bg-slate-800 border border-slate-700 text-slate-100";
 
-function DashboardScreen({ user, onLogout, onCreateRoom, joinCode, setJoinCode, onJoinRoom, dashMsg }) {
+function DashboardScreen({ user, onLogout, onCreateRoom, joinCode, setJoinCode, onJoinRoom, dashMsg, onSetup2FA, setupData }) {
   return (
     <div className="flex-1 flex flex-col items-center px-5 py-12">
       <div className="w-full max-w-xl">
@@ -709,10 +818,25 @@ function DashboardScreen({ user, onLogout, onCreateRoom, joinCode, setJoinCode, 
               Signed in as <b className="text-slate-200 font-semibold">{user.username}</b>
             </div>
           </div>
-          <button onClick={onLogout} className={ghostBtn}>
-            Log out
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={onSetup2FA} className="flex items-center gap-1.5 text-xs bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-3 py-2 rounded-lg hover:bg-indigo-500/20">
+              <ShieldCheck size={14} /> 2FA Setup
+            </button>
+            <button onClick={onLogout} className={ghostBtn}>
+              Log out
+            </button>
+          </div>
         </div>
+
+        {setupData && (
+          <div className="mb-6 bg-slate-900 border border-indigo-500/30 rounded-2xl p-5 flex flex-col items-center text-center gap-3">
+            <h3 className="font-semibold text-sm text-indigo-400">Scan QR Code into Authenticator App</h3>
+            <p className="text-xs text-slate-400">Use Google Authenticator or Authy to scan this key secret:</p>
+            <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 font-mono text-xs text-slate-200 select-all">
+              {setupData.secret}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col gap-3">
@@ -743,6 +867,31 @@ function DashboardScreen({ user, onLogout, onCreateRoom, joinCode, setJoinCode, 
         {dashMsg && <p className="text-rose-400 text-xs mt-4 text-center">{dashMsg}</p>}
       </div>
     </div>
+  );
+}
+
+function VideoTile({ label, isYou, videoRef }) {
+  return (
+    <div className="relative aspect-video bg-slate-900 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center">
+      <video ref={videoRef} autoPlay playsInline muted={isYou} className="w-full h-full object-cover" />
+      <div className="absolute bottom-2 left-2 px-2.5 py-1 rounded-md bg-slate-950/70 backdrop-blur text-xs font-medium text-slate-200 border border-slate-800">
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function CtlButton({ children, onClick, off }) {
+  return (
+    <button
+      onClick={onClick}
+      className={
+        "w-11 h-11 rounded-full flex items-center justify-center transition border " +
+        (off ? "bg-rose-500/10 border-rose-500/30 text-rose-400" : "bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700")
+      }
+    >
+      {children}
+    </button>
   );
 }
 
@@ -863,14 +1012,9 @@ function RoomScreen({
           ) : (
             <ul className="p-2.5 overflow-y-auto flex-1">
               {participants.map((p) => (
-                <li key={p} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-slate-800/60 text-sm">
-                  <span className="w-[26px] h-[26px] rounded-full bg-gradient-to-br from-indigo-500 to-cyan-400 flex items-center justify-center text-[11px] font-bold text-slate-950 flex-shrink-0">
-                    {initials(p)}
-                  </span>
-                  <span>
-                    {p}
-                    {p === currentUsername ? " (you)" : ""}
-                  </span>
+                <li key={p} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium text-slate-300">
+                  <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                  {p} {p === currentUsername ? "(you)" : ""}
                 </li>
               ))}
             </ul>
@@ -878,36 +1022,5 @@ function RoomScreen({
         </div>
       </div>
     </div>
-  );
-}
-
-function VideoTile({ label, isYou, videoRef }) {
-  return (
-    <div className="relative aspect-video bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden flex items-center justify-center">
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted={isYou}
-        className={"w-full h-full object-cover " + (isYou ? "-scale-x-100" : "")}
-      />
-      <div className="absolute bottom-3 left-3 bg-slate-950/80 backdrop-blur px-2.5 py-1 rounded-md text-xs font-medium text-slate-200 border border-slate-800">
-        {label}
-      </div>
-    </div>
-  );
-}
-
-function CtlButton({ children, onClick, off }) {
-  return (
-    <button
-      onClick={onClick}
-      className={
-        "w-[46px] h-[46px] rounded-full flex items-center justify-center transition " +
-        (off ? "bg-rose-500/20 text-rose-400 border border-rose-500/30" : "bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700")
-      }
-    >
-      {children}
-    </button>
   );
 }

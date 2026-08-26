@@ -2,17 +2,18 @@ package org.example.videochat.auth.controller;
 
 import com.warrenstrange.googleauth.GoogleAuthenticator;
 import com.warrenstrange.googleauth.GoogleAuthenticatorKey;
-import com.warrenstrange.googleauth.GoogleAuthenticatorQRGenerator;
+import org.example.videochat.auth.dto.TwoFactorSetupResponse;
+import org.example.videochat.auth.service.TwoFactorService;
 import org.example.videochat.user.entity.User;
 import org.example.videochat.user.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.oauth2.core.user.OAuth2User;
+import org.springframework.web.bind.annotation.*;
+
 
 import java.util.Map;
 
@@ -20,26 +21,43 @@ import java.util.Map;
 @RequestMapping("/api/2fa")
 public class TwoFactorController {
 
-    private final UserRepository userRepository;
-    private final GoogleAuthenticator gAuth = new GoogleAuthenticator();
+    @Autowired
+    private UserRepository userRepository;
 
     @Autowired
-    public TwoFactorController(UserRepository userRepository) {
-        this.userRepository = userRepository;
+    private TwoFactorService twoFactorService; // Inject missing service
+
+    private final GoogleAuthenticator gAuth = new GoogleAuthenticator();
+
+    // Usage example:
+    public String generateSecret() {
+        final GoogleAuthenticatorKey key = gAuth.createCredentials();
+        return key.getKey();
     }
 
-    // 1. Generate 2FA Secret & QR Code URL
     @PostMapping("/setup")
-    public ResponseEntity<?> setup2FA(@AuthenticationPrincipal User user) {
-        GoogleAuthenticatorKey key = gAuth.createCredentials();
-        String secret = key.getKey();
+    public ResponseEntity<?> setupTwoFactor(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("User is not authenticated");
+        }
 
-        // Save secret temporarily or permanently to user
+        String email;
+        if (authentication.getPrincipal() instanceof OAuth2User oauth2User) {
+            email = oauth2User.getAttribute("email");
+        } else {
+            email = authentication.getName();
+        }
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found with email: " + email));
+
+        String secret = twoFactorService.generateNewSecret();
         user.setTwoFactorSecret(secret);
         userRepository.save(user);
 
-        String qrCodeUrl = GoogleAuthenticatorQRGenerator.getOtpAuthURL("YourApp", user.getEmail(), key);
-        return ResponseEntity.ok(Map.of("secret", secret, "qrCodeUrl", qrCodeUrl));
+        String qrCodeUri = twoFactorService.generateQrCodeUri(secret, user.getEmail());
+
+        return ResponseEntity.ok(new TwoFactorSetupResponse(secret, qrCodeUri));
     }
 
     // 2. Verify Code & Enable 2FA
@@ -55,4 +73,6 @@ public class TwoFactorController {
         }
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid 2FA code");
     }
+
 }
+

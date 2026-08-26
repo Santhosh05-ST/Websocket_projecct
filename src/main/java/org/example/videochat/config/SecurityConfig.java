@@ -32,18 +32,31 @@ public class SecurityConfig {
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
+
         CorsConfiguration config = new CorsConfiguration();
+
         config.setAllowedOrigins(List.of(
-                "http://localhost:5173",   // Vite dev server
+                "http://localhost:5173",
                 "http://localhost:3000",
                 "https://websocket-projecct-2.onrender.com"
         ));
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+
+        config.setAllowedMethods(List.of(
+                "GET",
+                "POST",
+                "PUT",
+                "DELETE",
+                "OPTIONS"
+        ));
+
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
 
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        UrlBasedCorsConfigurationSource source =
+                new UrlBasedCorsConfigurationSource();
+
         source.registerCorsConfiguration("/**", config);
+
         return source;
     }
 
@@ -52,37 +65,36 @@ public class SecurityConfig {
             throws Exception {
 
         http
-                // Enable CORS using the bean above
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .cors(cors ->
+                        cors.configurationSource(corsConfigurationSource())
+                )
 
-                // Disable CSRF because we are using JWT
                 .csrf(AbstractHttpConfigurer::disable)
 
-                // JWT is stateless
+                // OAuth2 needs session during login flow
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(
-                                SessionCreationPolicy.STATELESS
+                                SessionCreationPolicy.IF_REQUIRED
                         )
                 )
 
-                // Endpoint permissions
                 .authorizeHttpRequests(auth -> auth
+
                         .requestMatchers(
                                 "/auth/register",
                                 "/auth/login",
                                 "/ws/**",
-                                "/oauth2/**",          // Added for OAuth initiation
-                                "/login/oauth2/**"     // Added for Google OAuth callback
+                                "/oauth2/**",
+                                "/login/oauth2/**"
                         ).permitAll()
+
                         .anyRequest().authenticated()
                 )
 
-                // OAuth2 Login configuration
-                .oauth2Login(oauth2 -> oauth2
-                        .successHandler(oAuth2SuccessHandler)
+                .oauth2Login(oauth2 ->
+                        oauth2.successHandler(oAuth2SuccessHandler)
                 )
 
-                // Add JWT filter before Spring's authentication filter
                 .addFilterBefore(
                         jwtAuthenticationFilter,
                         UsernamePasswordAuthenticationFilter.class

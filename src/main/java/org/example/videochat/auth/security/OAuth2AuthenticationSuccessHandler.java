@@ -14,37 +14,61 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 
 @Component
-public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationSuccessHandler {
+public class OAuth2AuthenticationSuccessHandler
+        extends SimpleUrlAuthenticationSuccessHandler {
 
     private final JwtService jwtService;
     private final UserRepository userRepository;
 
-    public OAuth2AuthenticationSuccessHandler(JwtService jwtService, UserRepository userRepository) {
+    public OAuth2AuthenticationSuccessHandler(
+            JwtService jwtService,
+            UserRepository userRepository) {
+
         this.jwtService = jwtService;
         this.userRepository = userRepository;
     }
 
     @Override
-    public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
-                                        Authentication authentication) throws IOException, ServletException {
-        OAuth2User oAuth2User = (OAuth2User) authentication.getPrincipal();
-        String email = oAuth2User.getAttribute("email");
-        String name = oAuth2User.getAttribute("name");
+    public void onAuthenticationSuccess(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            Authentication authentication)
+            throws IOException, ServletException {
 
-        // Find existing user or register new user via OAuth
-        User user = userRepository.findByEmail(email).orElseGet(() -> {
-            User newUser = new User();
-            newUser.setEmail(email);
-            newUser.setUsername(name);
-            // Assign default role/provider status as needed
-            return userRepository.save(newUser);
-        });
+        OAuth2User oAuth2User =
+                (OAuth2User) authentication.getPrincipal();
 
-        // Generate application JWT
-        String token = jwtService.generateToken(user.getEmail());
+        String email =
+                oAuth2User.getAttribute("email");
 
-        // Redirect to React app with token attached as query param
-        String redirectUrl = "https://websocket-projecct-2.onrender.com?token==" + token;
-        getRedirectStrategy().sendRedirect(request, response, redirectUrl);
+        String name =
+                oAuth2User.getAttribute("name");
+
+        User user =
+                userRepository.findByEmail(email)
+                        .orElseGet(() -> {
+
+                            User newUser = new User();
+
+                            newUser.setEmail(email);
+                            newUser.setUsername(name);
+
+                            return userRepository.save(newUser);
+                        });
+
+        String token =
+                jwtService.generateToken(user.getEmail());
+
+        // IMPORTANT: only one "="
+        String redirectUrl =
+                "https://websocket-projecct-2.onrender.com?token="
+                        + token;
+
+        getRedirectStrategy()
+                .sendRedirect(
+                        request,
+                        response,
+                        redirectUrl
+                );
     }
 }

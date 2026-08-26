@@ -29,5 +29,13 @@ public class User {
     private String twoFactorSecret;
 
     @Column(name = "is_two_factor_enabled")
-    private boolean isTwoFactorEnabled = false;
+    private Boolean isTwoFactorEnabled = false; // Object wrapper can handle nulls from DB
+
+    public Boolean getIsTwoFactorEnabled() {
+        return isTwoFactorEnabled != null && isTwoFactorEnabled;
+    }
+
+    public void setIsTwoFactorEnabled(Boolean isTwoFactorEnabled) {
+        this.isTwoFactorEnabled = isTwoFactorEnabled != null ? isTwoFactorEnabled : false;
+    }
 }

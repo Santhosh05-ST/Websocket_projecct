@@ -2,6 +2,7 @@ package org.example.videochat.config;
 
 import lombok.RequiredArgsConstructor;
 import org.example.videochat.auth.security.JwtAuthenticationFilter;
+import org.example.videochat.auth.security.OAuth2AuthenticationSuccessHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -22,6 +23,7 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final OAuth2AuthenticationSuccessHandler oAuth2SuccessHandler;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -68,9 +70,16 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/auth/register",
                                 "/auth/login",
-                                "/ws/**"
+                                "/ws/**",
+                                "/oauth2/**",          // Added for OAuth initiation
+                                "/login/oauth2/**"     // Added for Google OAuth callback
                         ).permitAll()
                         .anyRequest().authenticated()
+                )
+
+                // OAuth2 Login configuration
+                .oauth2Login(oauth2 -> oauth2
+                        .successHandler(oAuth2SuccessHandler)
                 )
 
                 // Add JWT filter before Spring's authentication filter

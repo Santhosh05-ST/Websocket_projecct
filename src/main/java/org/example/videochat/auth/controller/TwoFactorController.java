@@ -49,7 +49,7 @@ public class TwoFactorController {
         boolean isCodeValid = gAuth.authorize(user.getTwoFactorSecret(), code);
 
         if (isCodeValid) {
-            user.setTwoFactorEnabled(true);
+            user.setIsTwoFactorEnabled(true);
             userRepository.save(user);
             return ResponseEntity.ok(Map.of("message", "2FA enabled successfully"));
         }

@@ -28,6 +28,7 @@ public class User {
     @Column(name = "two_factor_secret")
     private String twoFactorSecret;
 
+    @Builder.Default
     @Column(name = "is_two_factor_enabled")
     private Boolean isTwoFactorEnabled = false; // Object wrapper can handle nulls from DB
 
